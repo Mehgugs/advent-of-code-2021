@@ -50,6 +50,7 @@ local enum = ipairs
 local print = print
 local to_n = tonumber
 local to_s = tostring
+local typ = type
 local setm = setmetatable
 local getm = getmetatable
 local open = io.open
@@ -70,14 +71,12 @@ local docs = {}
 -- luacheck: ignore 111
 
 function help(fn)
-    local doc
     for k , v in iter(_ENV) do
         if fn == v or fn == k  then
-            doc = docs[k]
-            break
+            print(docs[k])
+            return
         end
     end
-    print(doc)
 end
 
 function slurp(path)
@@ -133,6 +132,68 @@ Reads from the file at *path*, returning its contents as a sequence of lines of 
     Returns a table of the numbers.
 ]]
 
+function lines_of(path, conv)
+    local file
+    if itype(path) == "file" then
+        file = path
+    else
+        file = check(open(path, 'r'))
+    end
+    local out = {}
+    for line in file:lines() do
+        insert(out, conv(line))
+    end
+    return out
+end
+
+docs.lines_of = [[
+    lines_of(path, conv)
+Reads from the file at *path*, applying the function *conv* to each line.
+    Returns a table of the results for each line.
+]]
+
+function _ENV.enum(path, options)
+    local file
+    if itype(path) == "file" then
+        file = path
+    else
+        file = check(open(path, 'r'))
+    end
+    local out = {}
+    for line in file:lines() do
+        insert(out, options[line])
+    end
+    return out
+end
+
+docs.enum = [[
+    enum(path, options)
+Reads from the file at *path*, looking up each line in the table *options*.
+    Returns a table of the values found in *options* for each line.
+]]
+
+function enum_1(path, options, conv)
+    local file
+    if itype(path) == "file" then
+        file = path
+    else
+        file = check(open(path, 'r'))
+    end
+    local out = {}
+    for line in file:lines() do
+        local A, B = line:match("^(%S+)%s+(.+)")
+        insert(out, {options[A], conv(B)})
+    end
+    return out
+end
+
+docs.enum_1 = [[
+    enum_1(path, options, conv)
+Reads from the file at *path*, splits the line by the first whitespace,
+    looks up the first word in *options* and calls the function *conv* on the rest of the line.
+    Returns a table of {A, B} pairs, where *A* is the value from *options* and *B* is the result of calling *conv*, for each line.
+]]
+
 function bind(f, a)
     return function(...) return f(a, ...) end
 end
@@ -141,6 +202,24 @@ docs.bind = [[
     bind(f, a)
 Bind the first argument of *f* to *a*, returning a new function
     which accepts the rest of the arguments to *f*.
+]]
+
+function each(f, t, ...)
+    for _,v in enum(t) do f(v, ...) end
+end
+
+docs.each = [[
+    each(f, t, ...)
+Calls the function *f* on each element of *t*, passing any extra arguments to *f* in each call.
+]]
+
+function each_pair(f, t, ...)
+    for k,v in iter(t) do f(k,v, ...) end
+end
+
+docs.each = [[
+    each(f, t, ...)
+Calls the function *f* on each key-value pair of *t*, passing any extra arguments to *f* in each call.
 ]]
 
 function map(f, t)
@@ -310,9 +389,25 @@ function visualize(t)
     return setm(t, vmt)
 end
 
+local function visualize_all(t)
+    for _, v in iter(t) do
+        if typ(v) == "table" and getm(v) == nil then
+            visualize_all(v)
+        end
+    end
+    return setm(t, vmt)
+end
+
+_ENV.visualize_all = visualize_all
+
 docs.visualize = [[
     visualize(t)
 Attaches a metatable to *t* with a suitable tostring metamethod for printing.
+]]
+
+docs.visualize_all = [[
+    visualize_all(t)
+Attaches the [visualize] metatable to *t* and all child tables of *t*.
 ]]
 
 local function in_range(f, s, l) return s <= f and f <= l end
